@@ -761,7 +761,8 @@ int homa_ioc_abort(struct sock *sk, unsigned long arg) {
  *
  * Return: 0 on success, otherwise a negative errno.
  */
-int homa_ioctl(struct sock *sk, int cmd, unsigned long arg) {
+int homa_ioctl(struct sock *sk, int cmd, int *karg) {
+	unsigned long arg = (unsigned long) *karg;
 	int result;
 	__u64 start = get_cycles();
 
