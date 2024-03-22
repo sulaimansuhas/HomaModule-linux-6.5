@@ -824,8 +824,13 @@ int homa_setsockopt(struct sock *sk, int level, int optname, sockptr_t optval,
 	/* Do a trivial test to make sure we can at least write the first
 	 * page of the region.
 	 */
+	/*
 	if (copy_to_user(args.start, &args, sizeof(args)))
 		return -EFAULT;
+	*
+	* Don't think we need to mess with this for our purposes, but it's a p simple to make a similar
+	* testcase for kernel space.
+	*/
 
 	homa_sock_lock(hsk, "homa_setsockopt SO_HOMA_SET_BUF");
 	ret = homa_pool_init(hsk, args.start, args.length);
@@ -871,6 +876,7 @@ int homa_sendmsg(struct sock *sk, struct msghdr *msg, size_t length) {
 	sockaddr_in_union *addr = (sockaddr_in_union *) msg->msg_name;
 
 	homa_cores[raw_smp_processor_id()]->last_app_active = start;
+	/*
 	if (unlikely(!msg->msg_control_is_user)) {
 		tt_record("homa_sendmsg error: !msg->msg_control_is_user");
 		result = -EINVAL;
@@ -878,6 +884,12 @@ int homa_sendmsg(struct sock *sk, struct msghdr *msg, size_t length) {
 	}
 	if (unlikely(copy_from_user(&args, msg->msg_control,
 			sizeof(args)))) {
+		result = -EFAULT;
+		goto error;
+	}
+	*/
+	if (unlikely(memcpy(&args, msg->msg_control,
+			sizeof(args)) == 0)) {
 		result = -EFAULT;
 		goto error;
 	}
@@ -918,8 +930,16 @@ int homa_sendmsg(struct sock *sk, struct msghdr *msg, size_t length) {
 		homa_rpc_unlock(rpc);
 		rpc = NULL;
 
+		/*
 		if (unlikely(copy_to_user(msg->msg_control, &args,
 				sizeof(args)))) {
+			rpc = homa_find_client_rpc(hsk, args.id);
+			result = -EFAULT;
+			goto error;
+		}
+		*/
+		if (unlikely(memcpy(msg->msg_control, &args,
+				sizeof(args)) == 0)) {
 			rpc = homa_find_client_rpc(hsk, args.id);
 			result = -EFAULT;
 			goto error;
@@ -1019,8 +1039,15 @@ int homa_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int flags,
 		result = -EINVAL;
 		goto done;
 	}
+	/*
 	if (unlikely(copy_from_user(&control, msg->msg_control,
 			sizeof(control)))) {
+		result = -EFAULT;
+		goto done;
+	}
+	*/
+	if (unlikely(memcpy(&control, msg->msg_control,
+			sizeof(control)) == 0)) {
 		result = -EFAULT;
 		goto done;
 	}
@@ -1115,11 +1142,18 @@ int homa_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int flags,
 	homa_rpc_unlock(rpc);
 
 done:
-	if (unlikely(copy_to_user(msg->msg_control, &control, sizeof(control)))) {
+	/*
+		if (unlikely(copy_to_user(msg->msg_control, &control, sizeof(control)))) {
+			printk(KERN_NOTICE "homa_recvmsg couldn't copy back args\n");
+			result = -EFAULT;
+		}
+	 */
+	if (unlikely(memcpy(msg->msg_control, &control, sizeof(control)) == 0)) {
 		/* Note: in this case the message's buffers will be leaked. */
 		printk(KERN_NOTICE "homa_recvmsg couldn't copy back args\n");
 		result = -EFAULT;
 	}
+	
 
 	/* This is needed to compensate for ____sys_recvmsg (which writes the
 	 * after-before difference for this value back as msg_controllen in
